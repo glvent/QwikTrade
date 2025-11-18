@@ -1,22 +1,28 @@
 mod app;
+mod config;
 mod ui;
 
+use app::App;
+use config::load_config;
 use eframe::egui;
-use app::TradeApp;
 
 fn main() -> eframe::Result<()> {
-    let viewport = egui::ViewportBuilder::default()
-        .with_inner_size([1200.0, 800.0])
-        .with_title("TradeEZ");
+    let conf = load_config();
 
-    let native_options = eframe::NativeOptions {
+    let viewport = egui::ViewportBuilder::default()
+        .with_resizable(conf.window.resizable)
+        .with_inner_size([conf.window.width as f32, conf.window.height as f32])
+        .with_title(conf.window.title.clone());
+
+    let native_opts = eframe::NativeOptions {
         viewport,
+        vsync: conf.window.vsync,
         ..Default::default()
     };
 
     eframe::run_native(
-        "TradeEZ", 
-        native_options,
-        Box::new(|_cc| Ok(Box::new(TradeApp::default()))),
+        "QwikTrade",
+        native_opts,
+        Box::new(|_cc| Ok(Box::new(App::default()))),
     )
 }

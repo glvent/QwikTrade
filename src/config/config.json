@@ -1,0 +1,9 @@
+{
+    "window": {
+        "width": 1200,
+        "height": 800,
+        "title": "QwikTrade",
+        "vsync": true,
+        "resizable": true
+    }
+}

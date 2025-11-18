@@ -2,17 +2,17 @@ use eframe::egui;
 
 use crate::ui::layout;
 
-pub struct TradeApp {
+pub struct App {
     pub symbol: String,
     pub timeframe: String,
     pub status_message: String,
     pub tick_counter: u64,
 }
 
-impl Default for TradeApp {
+impl Default for App {
     fn default() -> Self {
         // Placeholder data...
-        TradeApp {
+        App {
             symbol: "BTC-USDT".to_owned(),
             timeframe: "1m".to_owned(),
             status_message: "Disconnected".to_owned(),
@@ -21,7 +21,7 @@ impl Default for TradeApp {
     }
 }
 
-impl eframe::App for TradeApp {
+impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.tick_counter += 1;
 

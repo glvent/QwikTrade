@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::app::TradeApp;
+use crate::app::App;
 
 pub fn draw_central_panel(ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -18,7 +18,7 @@ pub fn draw_central_panel(ctx: &egui::Context) {
     });
 }
 
-pub fn draw_top_panel(app: &mut TradeApp, ctx: &egui::Context) {
+pub fn draw_top_panel(app: &mut App, ctx: &egui::Context) {
     egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
         ui.horizontal(|ui| {
             ui.heading("TradeEZ Prototype");
