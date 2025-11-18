@@ -17,9 +17,9 @@ pub struct WindowConfig {
 }
 
 pub fn load_config() -> Config {
-    let json_path = Path::new("config/config.json");
+    let json_path = Path::new("src/config/config.json");
 
-    // TODO: implement logging
+    // TODO: implement logging and error handling
     let parsed_json = fs::read_to_string(json_path).unwrap_or_else(|_err| {
         String::new()
     });
@@ -30,12 +30,12 @@ pub fn load_config() -> Config {
         }
     }
 
-    // Return a default if something goes wrong...
+    // Return a default config if something goes wrong...
     Config {
         window: WindowConfig {
             width: 1200,
             height: 800,
-            title: "TradeEZ".to_owned(),
+            title: "QwikTrade".to_owned(),
             vsync: true,
             resizable: true
         },

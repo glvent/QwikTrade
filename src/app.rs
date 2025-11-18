@@ -26,6 +26,7 @@ impl eframe::App for App {
         self.tick_counter += 1;
 
         layout::draw_top_panel(self, ctx);
+        layout::draw_left_panel(self, ctx);
         layout::draw_central_panel(ctx);
 
         ctx.request_repaint();
