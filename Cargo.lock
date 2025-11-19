@@ -9,6 +9,7 @@ dependencies = [
  "eframe",
  "egui_plot",
  "flume",
+ "rand",
  "reqwest",
  "serde",
  "serde_json",
