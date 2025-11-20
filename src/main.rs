@@ -2,6 +2,7 @@ mod app;
 mod config;
 mod models;
 mod ui;
+mod state;
 
 use app::App;
 use config::load_config;

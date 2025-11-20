@@ -25,7 +25,7 @@ pub fn draw_central_panel(app: &mut App, ctx: &egui::Context) {
             egui::StrokeKind::Outside,
         );
 
-        if app.price_bars.is_empty() {
+        if app.market.price_bars().is_empty() {
             painter.text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -39,7 +39,7 @@ pub fn draw_central_panel(app: &mut App, ctx: &egui::Context) {
         let mut min_price = f32::MAX;
         let mut max_price = f32::MIN;
 
-        for bar in &app.price_bars {
+        for bar in app.market.price_bars() {
             if bar.low < min_price { min_price = bar.low };
             if bar.high > max_price { max_price = bar.high };
         }
@@ -58,10 +58,14 @@ pub fn draw_central_panel(app: &mut App, ctx: &egui::Context) {
         let total_candle = candle_width + gap;
         let cap = (rect.width() / total_candle).floor() as usize;
 
+        /* TODO: implement as a method after abstracting logic further...
         // Handles which bars to show...
-        let len = app.price_bars.len();
+        let len = app.market.price_bars().len();
         let start = if len > cap { len - cap } else { 0 };
-        let bars = &app.price_bars[start..];
+        let bars = &app.market.price_bars()[start..];
+        */ 
+
+        let bars = app.market.price_bars();
 
         for (i, bar) in bars.iter().enumerate() {
             let x = rect.left() + (i as f32) * total_candle;
