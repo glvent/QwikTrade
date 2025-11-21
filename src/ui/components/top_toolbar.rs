@@ -11,7 +11,7 @@ pub fn draw_top_toolbar(app: &mut App, ui: &mut Ui) {
 }
 
 fn draw_title(_app: &mut App, ui: &mut Ui) {
-    ui.heading("QwikTrade Prototype");
+    ui.heading("QwikTrade");
 }
 
 fn draw_symbol(app: &mut App, ui: &mut Ui) {
