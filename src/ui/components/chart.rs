@@ -1,16 +1,20 @@
 use eframe::egui::{
-    Align2, Color32, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, TextStyle, Ui,
+    Align2, Color32, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, TextStyle, Ui, Shape
 };
 
 use crate::app::App;
 use crate::models::PriceBar;
+use crate::state::{ChartState, MarketState};
 
 pub fn draw_chart(app: &mut App, ui: &mut Ui) {
     let available_size = ui.available_size();
     let (rect, res) = ui.allocate_exact_size(available_size, Sense::hover());
     let painter = ui.painter_at(rect);
 
-    let price_bars = app.market.price_bars();
+    let market: &mut MarketState = &mut app.market;
+    let chart: &mut ChartState = &mut app.chart;
+
+    let price_bars = market.price_bars();
 
     draw_chart_background(&painter, rect);
 
@@ -19,8 +23,17 @@ pub fn draw_chart(app: &mut App, ui: &mut Ui) {
         return;
     }
 
+    if let Some(pointer_pos) = res.hover_pos() {
+        handle_mouse_hover(chart, pointer_pos, rect, price_bars);
+    }
+
+    if let Some(price) = chart.hover_price {
+        draw_hover_indicator(&painter, rect, price, price_bars, chart.hover_index);
+    }
+
     draw_candles(rect, &painter, price_bars);
-    draw_price_labels(painter, rect, ui, price_bars);
+    draw_price_labels(&painter, rect, ui, price_bars);
+    draw_current_price(&painter, rect, market.current_price(), price_bars);
 }
 
 fn draw_chart_background(painter: &Painter, rect: Rect) {
@@ -70,7 +83,7 @@ fn draw_candles(rect: Rect, painter: &Painter, price_bars: &[PriceBar]) {
         let y_high = get_price_position_y(bar.high, min_price, price_span, rect);
         let y_low = get_price_position_y(bar.low, min_price, price_span, rect);
 
-        let candle_color = get_candle_color(bar.close >= bar.open);
+        let candle_color = get_price_color(bar.close >= bar.open);
 
         draw_candle(
             painter,
@@ -121,8 +134,7 @@ fn draw_candle(
     painter.rect_stroke(body_rect, 1.0, Stroke::new(0.2, color), StrokeKind::Outside);
 }
 
-
-fn draw_price_labels(painter: Painter, rect: Rect, ui: &Ui, price_bars: &[PriceBar]) {
+fn draw_price_labels(painter: &Painter, rect: Rect, ui: &Ui, price_bars: &[PriceBar]) {
     let (min_price, max_price) = get_price_bounds(price_bars);
 
     painter.text(
@@ -130,17 +142,16 @@ fn draw_price_labels(painter: Painter, rect: Rect, ui: &Ui, price_bars: &[PriceB
         Align2::LEFT_TOP,
         format!("{:.2}", max_price),
         TextStyle::Body.resolve(ui.style()),
-        Color32::from_rgb(200, 200, 220),
+        Color32::from_rgba_unmultiplied(200, 200, 200, 100),
     );
     painter.text(
         Pos2::new(rect.left() + 4.0, rect.bottom() - 4.0),
         Align2::LEFT_BOTTOM,
         format!("{:.2}", min_price),
         TextStyle::Body.resolve(ui.style()),
-        Color32::from_rgb(200, 200, 220),
+        Color32::from_rgba_unmultiplied(200, 200, 200, 100),
     );
-}
-
+} 
 
 fn get_price_bounds(price_bars: &[PriceBar]) -> (f32, f32) {
     let mut min_price = f32::MAX;
@@ -163,10 +174,133 @@ fn get_price_position_y(price: f32, min_price: f32, price_span: f32, rect: Rect)
     rect.bottom() - t * rect.height()
 }
 
-fn get_candle_color(is_bull: bool) -> Color32 {
+fn get_price_color(is_bull: bool) -> Color32 {
     if is_bull {
         Color32::from_rgb(100, 200, 100)
     } else {
         Color32::from_rgb(200, 100, 100)
     }
+}
+
+fn handle_mouse_hover(
+    chart: &mut ChartState,
+    pointer_pos: Pos2,
+    rect: Rect,
+    price_bars: &[PriceBar],
+) {
+    if price_bars.is_empty() {
+        chart.hover_price = None;
+        chart.hover_index = None;
+        return;
+    }
+
+    let (min_price, max_price) = get_price_bounds(price_bars);
+    let price_span = (max_price - min_price).max(1.0);
+
+    // Mouse Y pos to price
+    let t = (rect.bottom() - pointer_pos.y) / rect.height();
+    let price = min_price + t * price_span;
+    chart.hover_price = Some(price);
+
+    const CANDLE_WIDTH: f32 = 6.0;
+    const GAP: f32 = 1.0;
+    const TOTAL_CANDLE: f32 = CANDLE_WIDTH + GAP;
+
+    let x_offset = pointer_pos.x - rect.left();
+    let index = (x_offset / TOTAL_CANDLE).floor() as usize;
+
+    if index < price_bars.len() {
+        chart.hover_index = Some(index);
+    } else {
+        chart.hover_index = None;
+    }
+}
+
+fn draw_hover_indicator(
+    painter: &Painter,
+    rect: Rect,
+    price: f32,
+    price_bars: &[PriceBar],
+    hover_index: Option<usize>,
+) {
+    if price_bars.is_empty() || hover_index.is_none() {
+        return ();
+    }
+
+    const CANDLE_WIDTH: f32 = 6.0;
+    const GAP: f32 = 1.0;
+    const TOTAL_CANDLE: f32 = CANDLE_WIDTH + GAP;
+
+    let x = rect.left() + (hover_index.unwrap() as f32) * TOTAL_CANDLE;
+    let x_center = x + CANDLE_WIDTH * 0.5;
+
+    let (min_price, max_price) = get_price_bounds(price_bars);
+    let price_span = (max_price - min_price).max(1.0);
+    let y = get_price_position_y(price, min_price, price_span, rect);
+
+    let x_seg = [Pos2::new(x_center, rect.top()), Pos2::new(x_center, rect.bottom())];
+    let y_seg = [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)];
+
+    let stroke = Stroke {
+        width: 1.0,
+        color: Color32::from_rgba_unmultiplied(100, 100, 100, 200),
+    };
+
+    painter.add(Shape::dashed_line(
+        &x_seg,
+        stroke,
+        4.0,
+        4.0,
+    ));
+
+    painter.add(Shape::dashed_line(
+        &y_seg,
+        stroke,
+        4.0,
+        4.0,
+    ));
+
+    painter.text(
+        Pos2::new(rect.right() - 60.0, y - 10.0),
+        Align2::RIGHT_CENTER,
+        format!("{:.2}", price),
+        TextStyle::Small.resolve(&painter.ctx().style()),
+        Color32::from_rgb(100, 100, 100),
+    );
+}
+
+fn draw_current_price(
+    painter: &Painter,
+    rect: Rect,
+    current_price: f32,
+    price_bars: &[PriceBar],
+) {
+    if price_bars.is_empty() {
+        return;
+    }
+
+    let (min_price, max_price) = get_price_bounds(price_bars);
+    let price_span = (max_price - min_price).max(1.0);
+    let y = get_price_position_y(current_price, min_price, price_span, rect);
+
+    let line_segment = [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)];
+    let stroke = Stroke {
+        width: 1.0,
+        color: get_price_color(current_price >= price_bars[0].close),
+    };
+
+    painter.add(Shape::dashed_line(
+        &line_segment,
+        stroke,
+        4.0,
+        4.0,
+    ));
+
+    painter.text(
+        Pos2::new(rect.right() - 60.0, y - 10.0),
+        Align2::RIGHT_CENTER,
+        format!("{:.2}", current_price),
+        TextStyle::Small.resolve(&painter.ctx().style()),
+        get_price_color(current_price >= price_bars[0].close),
+    );
 }

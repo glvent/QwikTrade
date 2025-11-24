@@ -1,9 +1,11 @@
 use eframe::egui::Context;
 
 use crate::ui::components::debug::draw_debug;
-use crate::ui::{self, layout};
-use crate::state::MarketState;
+use crate::ui::layout;
+use crate::state::{ChartState, MarketState};
 use crate::ui::theme;
+
+// TODO: abstract any UI away from App...
 
 pub struct App {
     pub symbol: String,
@@ -11,6 +13,7 @@ pub struct App {
     pub status_message: String,
     pub tick_counter: u64,
     pub market: MarketState,
+    pub chart: ChartState,
     ui_init: bool,
 }
 
@@ -19,6 +22,7 @@ impl Default for App {
         // Placeholder data...
         // Eventually, symbol and timeframe might be abstracted...
         let mut market = MarketState::new(30_000.0);
+        let mut chart = ChartState::new();
         
         // Generate all bars immediately at startup
         market.generate_fake_data(1_000);
@@ -29,6 +33,7 @@ impl Default for App {
             status_message: "Disconnected".to_owned(),
             tick_counter: 0,
             market,
+            chart,
             ui_init: false,
         }
     }

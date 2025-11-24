@@ -6,7 +6,7 @@ pub fn draw_debug(app: &mut App, ctx: &Context) {
     let color = Color32::from_rgba_unmultiplied(235, 235, 235, 50);
 
     let content_rect = ctx.available_rect();
-    let debug_pos = pos2(content_rect.right() - 200.0, content_rect.top() + 10.0);
+    let debug_pos = pos2(content_rect.right() - 40.0, content_rect.top() - 100.0);
     
     Area::new(Id::new("debug_area"))
         .fixed_pos(debug_pos)

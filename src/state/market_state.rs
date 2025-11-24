@@ -1,6 +1,5 @@
 use crate::models::PriceBar;
 use rand::Rng;
-
 pub struct MarketState {
     price_bars: Vec<PriceBar>,
     current_price: f32,
@@ -19,6 +18,10 @@ impl MarketState {
     // Read-only view for UI...
     pub fn price_bars(&self) -> &[PriceBar] {
         &self.price_bars
+    }
+
+    pub fn current_price(&self) -> f32 {
+        self.current_price
     }
 
     // Creates placeholder OHLCV data...

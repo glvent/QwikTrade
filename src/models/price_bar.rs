@@ -1,4 +1,6 @@
 #[derive(Clone, Debug)]
+
+// TODO: add is_bull field...
 pub struct PriceBar {
     // Index acts as an x-position for each bar...
     pub index: u64,
