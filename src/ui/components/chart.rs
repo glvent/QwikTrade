@@ -7,7 +7,7 @@ use crate::models::PriceBar;
 
 pub fn draw_chart(app: &mut App, ui: &mut Ui) {
     let available_size = ui.available_size();
-    let (rect, _res) = ui.allocate_exact_size(available_size, Sense::hover());
+    let (rect, res) = ui.allocate_exact_size(available_size, Sense::hover());
     let painter = ui.painter_at(rect);
 
     let price_bars = app.market.price_bars();
@@ -20,10 +20,11 @@ pub fn draw_chart(app: &mut App, ui: &mut Ui) {
     }
 
     draw_candles(rect, &painter, price_bars);
+    draw_price_labels(painter, rect, ui, price_bars);
 }
 
 fn draw_chart_background(painter: &Painter, rect: Rect) {
-    painter.rect_filled(rect, 4.0, Color32::from_rgb(17, 17, 17));
+    painter.rect_filled(rect, 4.0, Color32::from_rgb(20, 20, 20));
 
     painter.rect_stroke(
         rect,
@@ -39,7 +40,7 @@ fn draw_loading_message(painter: &Painter, rect: Rect, ui: &Ui) {
         Align2::CENTER_CENTER,
         "Loading data...",
         TextStyle::Heading.resolve(ui.style()),
-        Color32::from_rgb(238, 238, 238),
+        Color32::from_rgb(235, 235, 235),
     );
 }
 
@@ -120,8 +121,10 @@ fn draw_candle(
     painter.rect_stroke(body_rect, 1.0, Stroke::new(0.2, color), StrokeKind::Outside);
 }
 
-/* Optional draw price labels function:
-fn draw_price_labels(painter: Painter, rect: Rect, ui: &Ui, min_price: f32, max_price: f32) {
+
+fn draw_price_labels(painter: Painter, rect: Rect, ui: &Ui, price_bars: &[PriceBar]) {
+    let (min_price, max_price) = get_price_bounds(price_bars);
+
     painter.text(
         Pos2::new(rect.left() + 4.0, rect.top() + 4.0),
         Align2::LEFT_TOP,
@@ -137,7 +140,7 @@ fn draw_price_labels(painter: Painter, rect: Rect, ui: &Ui, min_price: f32, max_
         Color32::from_rgb(200, 200, 220),
     );
 }
-*/
+
 
 fn get_price_bounds(price_bars: &[PriceBar]) -> (f32, f32) {
     let mut min_price = f32::MAX;

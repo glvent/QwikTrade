@@ -24,7 +24,7 @@ impl MarketState {
     // Creates placeholder OHLCV data...
     pub fn generate_fake_data(&mut self, max_days_generated: usize) {
         // Configurable parameters...
-        const VOLATILITY: f32 = 0.004;
+        const VOLATILITY: f32 = 0.005;
         const WICK_EXTRA: f32 = 0.002;
         const BASE_VOLUME: f32 = 1_000.0;
         const VOL_VOLUME: f32 = 500.0;
