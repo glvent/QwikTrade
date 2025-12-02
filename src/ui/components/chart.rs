@@ -1,5 +1,5 @@
 use eframe::egui::{
-    Align2, Color32, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, TextStyle, Ui, Shape
+    Align2, Color32, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, TextStyle, Ui, Shape, Shadow, Frame
 };
 
 use crate::app::App;
@@ -7,60 +7,116 @@ use crate::models::PriceBar;
 use crate::state::{ChartState, MarketState};
 
 pub fn draw_chart(app: &mut App, ui: &mut Ui) {
-    let available_size = ui.available_size();
-    let (rect, res) = ui.allocate_exact_size(available_size, Sense::hover());
-    let painter = ui.painter_at(rect);
+    let shadow = Shadow {
+        offset: [0, 0],
+        blur: 25,
+        spread: 5,
+        color: Color32::from_rgba_unmultiplied(0, 0, 0, 50),
+    };
+    
+    Frame::default()
+        .fill(Color32::from_rgb(20, 20, 20))
+        .stroke(Stroke::new(0.5, Color32::from_rgb(20, 20, 20)))
+        .shadow(shadow)
+        .inner_margin(0.0)
+        .show(ui, |ui| {
+            let available_size = ui.available_size();
+            let (rect, res) = ui.allocate_exact_size(available_size, Sense::click_and_drag());
+            let painter = ui.painter_at(rect);
 
-    let market: &mut MarketState = &mut app.market;
-    let chart: &mut ChartState = &mut app.chart;
+            let market: &mut MarketState = &mut app.market;
+            let chart: &mut ChartState = &mut app.chart;
 
-    let price_bars = market.price_bars();
+            let price_bars = market.price_bars();
 
-    draw_chart_background(&painter, rect);
+            if price_bars.is_empty() {
+                draw_loading_message(&painter, rect, ui);
+                return;
+            }
 
-    if price_bars.is_empty() {
-        draw_loading_message(&painter, rect, ui);
-        return;
-    }
+            let is_dragging = res.dragged();
+            
+            if res.drag_started() {
+                if let Some(pointer_pos) = res.hover_pos() {
+                    chart.pan_drag_start = chart.pan_offset;
+                    chart.drag_start_x = Some(pointer_pos.x);
+                }
+            }
 
-    // Handle pinch zoom...
-    if res.hovered() {
-        let zoom_delta = ui.input(|i| i.zoom_delta());
-        if zoom_delta != 1.0 {
-            chart.zoom = (chart.zoom * zoom_delta).max(0.1).min(10.0);
-        }
-    }
+            if is_dragging {
+                if let (Some(pointer_pos), Some(drag_start_x)) = (res.hover_pos(), chart.drag_start_x) {
+                    let drag_delta_x = pointer_pos.x - drag_start_x;
+                    
+                    const BASE_CANDLE_WIDTH: f32 = 6.0;
+                    const BASE_GAP: f32 = 1.0;
 
-    if res.dragged() {
-        let drag_delta = res.drag_delta();
-        
-        const BASE_CANDLE_WIDTH: f32 = 6.0;
-        const BASE_GAP: f32 = 1.0;
+                    let total_candle = (BASE_CANDLE_WIDTH + BASE_GAP) * chart.zoom;
+                    let total_chart_width = (price_bars.len() as f32) * total_candle;
+                    let vis_width = rect.width();
 
-        let total_candle = (BASE_CANDLE_WIDTH + BASE_GAP) * chart.zoom;
-        let total_chart_width = (price_bars.len() as f32) * total_candle;
-        let vis_width = rect.width();
+                    let new_pan = chart.pan_drag_start + drag_delta_x;
 
-        let new_pan = chart.pan_offset + drag_delta.x;
+                    let content_excess = (total_chart_width - vis_width).max(0.0);
 
-        // Clamp pan to chart...
-        let max_pan = 0.0;
-        let min_pan = -(total_chart_width - vis_width).min(0.0);
+                    let max_pan = 0.0;
+                    let min_pan = -content_excess;
 
-        chart.pan_offset = new_pan.max(min_pan).min(max_pan);
-    }
+                    chart.pan_offset = new_pan.clamp(min_pan, max_pan);
+                }
+            } else {
+                chart.drag_start_x = None;
+            }
 
-    if let Some(pointer_pos) = res.hover_pos() {
-        handle_mouse_hover(chart, pointer_pos, rect, price_bars);
-    }
+            // Handle pinch zoom (only when not dragging)...
+            if res.hovered() && !is_dragging {
+                let zoom_delta = ui.input(|i| i.zoom_delta());
+                if zoom_delta != 1.0 {
+                    // Get cursor position to zoom into...
+                    if let Some(pointer_pos) = res.hover_pos() {
+                        const BASE_CANDLE_WIDTH: f32 = 6.0;
+                        const BASE_GAP: f32 = 1.0;
+                        
+                        // Calculate chart x position (which candle) before zoom...
+                        let total_candle_old = (BASE_CANDLE_WIDTH + BASE_GAP) * chart.zoom;
+                        let chart_x = (pointer_pos.x - rect.left() - chart.pan_offset) / total_candle_old;
+    
+                        chart.zoom = (chart.zoom * zoom_delta).max(0.1).min(10.0);
+                        
+                        // Adjust pan offset to keep cursor position fixed...
+                        let total_candle_new = (BASE_CANDLE_WIDTH + BASE_GAP) * chart.zoom;
+                        chart.pan_offset = pointer_pos.x - rect.left() - chart_x * total_candle_new;
+                        
+                        // Clamp pan offset to valid range...
+                        let total_chart_width = (price_bars.len() as f32) * total_candle_new;
+                        let vis_width = rect.width();
+                        let content_excess = (total_chart_width - vis_width).max(0.0);
+                        let max_pan = 0.0;
+                        let min_pan = -content_excess;
+                        chart.pan_offset = chart.pan_offset.clamp(min_pan, max_pan);
+                    } else {
+                        chart.zoom = (chart.zoom * zoom_delta).max(0.1).min(10.0);
+                    }
+                }
+            }
 
-    if let Some(price) = chart.hover_price {
-        draw_hover_price(&painter, rect, price, price_bars, &chart);
-    }
+            // Only handle hover when not dragging...
+            if !is_dragging {
+                if let Some(pointer_pos) = res.hover_pos() {
+                    handle_mouse_hover(chart, pointer_pos, rect, price_bars);
+                }
+            } else {
+                chart.hover_price = None;
+                chart.hover_index = None;
+            }
 
-    draw_candles(rect, &painter, price_bars, &chart);
-    draw_price_labels(&painter, rect, ui, price_bars);
-    draw_current_price(&painter, rect, market.current_price(), price_bars);
+            if let (Some(price), Some(_)) = (chart.hover_price, chart.hover_index) {
+                draw_hover_price(&painter, rect, price, price_bars, chart);
+            }
+
+            draw_candles(rect, &painter, price_bars, &chart);
+            draw_price_labels(&painter, rect, ui, price_bars);
+            draw_current_price(&painter, rect, market.current_price(), price_bars);
+        });
 }
 
 fn draw_chart_background(painter: &Painter, rect: Rect) {
@@ -202,14 +258,17 @@ fn draw_hover_price(
         return ();
     }
 
-    const CANDLE_WIDTH: f32 = 6.0;
-    const GAP: f32 = 1.0;
-    const TOTAL_CANDLE: f32 = CANDLE_WIDTH + GAP;
+    const BASE_CANDLE_WIDTH: f32 = 6.0;
+    const BASE_GAP: f32 = 1.0;
+
+    let candle_width = BASE_CANDLE_WIDTH * chart.zoom;
+    let gap = BASE_GAP * chart.zoom;
+    let total_candle = candle_width + gap;
 
     let hover_index = chart.hover_index;
 
-    let x = rect.left() + (hover_index.unwrap() as f32) * TOTAL_CANDLE;
-    let x_center = x + CANDLE_WIDTH * 0.5;
+    let x = rect.left() + (hover_index.unwrap() as f32) * total_candle + chart.pan_offset;
+    let x_center = x + candle_width * 0.5;
 
     let (min_price, max_price) = get_price_bounds(price_bars);
     let price_span = (max_price - min_price).max(1.0);
@@ -318,6 +377,13 @@ fn handle_mouse_hover(
     price_bars: &[PriceBar],
 ) {
     if price_bars.is_empty() {
+        chart.hover_price = None;
+        chart.hover_index = None;
+        return;
+    }
+
+    // Check if pointer is within chart bounds
+    if !rect.contains(pointer_pos) {
         chart.hover_price = None;
         chart.hover_index = None;
         return;
