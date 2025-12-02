@@ -23,15 +23,42 @@ pub fn draw_chart(app: &mut App, ui: &mut Ui) {
         return;
     }
 
+    // Handle pinch zoom...
+    if res.hovered() {
+        let zoom_delta = ui.input(|i| i.zoom_delta());
+        if zoom_delta != 1.0 {
+            chart.zoom = (chart.zoom * zoom_delta).max(0.1).min(10.0);
+        }
+    }
+
+    if res.dragged() {
+        let drag_delta = res.drag_delta();
+        
+        const BASE_CANDLE_WIDTH: f32 = 6.0;
+        const BASE_GAP: f32 = 1.0;
+
+        let total_candle = (BASE_CANDLE_WIDTH + BASE_GAP) * chart.zoom;
+        let total_chart_width = (price_bars.len() as f32) * total_candle;
+        let vis_width = rect.width();
+
+        let new_pan = chart.pan_offset + drag_delta.x;
+
+        // Clamp pan to chart...
+        let max_pan = 0.0;
+        let min_pan = -(total_chart_width - vis_width).min(0.0);
+
+        chart.pan_offset = new_pan.max(min_pan).min(max_pan);
+    }
+
     if let Some(pointer_pos) = res.hover_pos() {
         handle_mouse_hover(chart, pointer_pos, rect, price_bars);
     }
 
     if let Some(price) = chart.hover_price {
-        draw_hover_indicator(&painter, rect, price, price_bars, chart.hover_index);
+        draw_hover_price(&painter, rect, price, price_bars, &chart);
     }
 
-    draw_candles(rect, &painter, price_bars);
+    draw_candles(rect, &painter, price_bars, &chart);
     draw_price_labels(&painter, rect, ui, price_bars);
     draw_current_price(&painter, rect, market.current_price(), price_bars);
 }
@@ -57,14 +84,24 @@ fn draw_loading_message(painter: &Painter, rect: Rect, ui: &Ui) {
     );
 }
 
-fn draw_candles(rect: Rect, painter: &Painter, price_bars: &[PriceBar]) {
+fn draw_candles(rect: Rect, painter: &Painter, price_bars: &[PriceBar], chart: &ChartState) {
     let (min_price, max_price) = get_price_bounds(price_bars);
     let price_span = (max_price - min_price).max(1.0);
 
     // Candle sizing constants...
-    const CANDLE_WIDTH: f32 = 6.0;
-    const GAP: f32 = 1.0;
-    const TOTAL_CANDLE: f32 = CANDLE_WIDTH + GAP;
+    const BASE_CANDLE_WIDTH: f32 = 6.0;
+    const BASE_GAP: f32 = 1.0;
+
+    let candle_width = BASE_CANDLE_WIDTH * chart.zoom;
+    let gap = BASE_GAP * chart.zoom;
+    let total_candle = candle_width + gap;
+
+    let vis_width = rect.width();
+    let vis_candle_count = (vis_width / total_candle).ceil() as usize;
+
+    let start_offset = (-chart.pan_offset / total_candle).floor() as usize;
+    let start_index = start_offset.min(price_bars.len().saturating_sub(1));
+    let end_index = (start_index + vis_candle_count).min(price_bars.len());
 
     /* TODO: implement as a method after abstracting logic further...
     // Handles which bars to show...
@@ -74,9 +111,10 @@ fn draw_candles(rect: Rect, painter: &Painter, price_bars: &[PriceBar]) {
     let bars = &price_bars[start..];
     */
 
-    for (i, bar) in price_bars.iter().enumerate() {
-        let x = rect.left() + (i as f32) * TOTAL_CANDLE;
-        let x_center = x + CANDLE_WIDTH * 0.5;
+    for (i, bar) in price_bars[start_index..end_index].iter().enumerate() {
+        let bar_index = start_index + i;
+        let x = rect.left() + (bar_index as f32) * total_candle + chart.pan_offset;
+        let x_center = x + candle_width * 0.5;
 
         let y_open = get_price_position_y(bar.open, min_price, price_span, rect);
         let y_close = get_price_position_y(bar.close, min_price, price_span, rect);
@@ -93,7 +131,7 @@ fn draw_candles(rect: Rect, painter: &Painter, price_bars: &[PriceBar]) {
             y_close,
             y_high,
             y_low,
-            CANDLE_WIDTH,
+            candle_width,
             candle_color,
         );
     }
@@ -153,6 +191,97 @@ fn draw_price_labels(painter: &Painter, rect: Rect, ui: &Ui, price_bars: &[Price
     );
 } 
 
+fn draw_hover_price(
+    painter: &Painter,
+    rect: Rect,
+    current_price: f32,
+    price_bars: &[PriceBar],
+    chart: &ChartState,
+) {
+    if price_bars.is_empty() {
+        return ();
+    }
+
+    const CANDLE_WIDTH: f32 = 6.0;
+    const GAP: f32 = 1.0;
+    const TOTAL_CANDLE: f32 = CANDLE_WIDTH + GAP;
+
+    let hover_index = chart.hover_index;
+
+    let x = rect.left() + (hover_index.unwrap() as f32) * TOTAL_CANDLE;
+    let x_center = x + CANDLE_WIDTH * 0.5;
+
+    let (min_price, max_price) = get_price_bounds(price_bars);
+    let price_span = (max_price - min_price).max(1.0);
+    let y = get_price_position_y(current_price, min_price, price_span, rect);
+
+    let x_seg = [Pos2::new(x_center, rect.top()), Pos2::new(x_center, rect.bottom())];
+    let y_seg = [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)];
+
+    let stroke = Stroke {
+        width: 1.0,
+        color: Color32::from_rgba_unmultiplied(100, 100, 100, 200),
+    };
+
+    painter.add(Shape::dashed_line(
+        &x_seg,
+        stroke,
+        4.0,
+        4.0,
+    ));
+
+    painter.add(Shape::dashed_line(
+        &y_seg,
+        stroke,
+        4.0,
+        4.0,
+    ));
+
+    painter.text(
+        Pos2::new(rect.right() - 60.0, y - 10.0),
+        Align2::RIGHT_CENTER,
+        format!("{:.2}", current_price),
+        TextStyle::Small.resolve(&painter.ctx().style()),
+        Color32::from_rgb(100, 100, 100),
+    );
+}
+
+fn draw_current_price(
+    painter: &Painter,
+    rect: Rect,
+    current_price: f32,
+    price_bars: &[PriceBar],
+) {
+    if price_bars.is_empty() {
+        return;
+    }
+
+    let (min_price, max_price) = get_price_bounds(price_bars);
+    let price_span = (max_price - min_price).max(1.0);
+    let y = get_price_position_y(current_price, min_price, price_span, rect);
+
+    let line_segment = [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)];
+    let stroke = Stroke {
+        width: 1.0,
+        color: get_price_color(current_price >= price_bars[0].close),
+    };
+
+    painter.add(Shape::dashed_line(
+        &line_segment,
+        stroke,
+        4.0,
+        4.0,
+    ));
+
+    painter.text(
+        Pos2::new(rect.right() - 60.0, y - 10.0),
+        Align2::RIGHT_CENTER,
+        format!("{:.2}", current_price),
+        TextStyle::Small.resolve(&painter.ctx().style()),
+        get_price_color(current_price >= price_bars[0].close),
+    );
+}
+
 fn get_price_bounds(price_bars: &[PriceBar]) -> (f32, f32) {
     let mut min_price = f32::MAX;
     let mut max_price = f32::MIN;
@@ -194,113 +323,28 @@ fn handle_mouse_hover(
         return;
     }
 
-    let (min_price, max_price) = get_price_bounds(price_bars);
-    let price_span = (max_price - min_price).max(1.0);
+    const BASE_CANDLE_WIDTH: f32 = 6.0;
+    const BASE_GAP: f32 = 1.0;
 
-    // Mouse Y pos to price
-    let t = (rect.bottom() - pointer_pos.y) / rect.height();
-    let price = min_price + t * price_span;
-    chart.hover_price = Some(price);
+    let candle_width = BASE_CANDLE_WIDTH * chart.zoom;
+    let gap = BASE_GAP * chart.zoom;
+    let total_candle = candle_width + gap;
 
-    const CANDLE_WIDTH: f32 = 6.0;
-    const GAP: f32 = 1.0;
-    const TOTAL_CANDLE: f32 = CANDLE_WIDTH + GAP;
-
-    let x_offset = pointer_pos.x - rect.left();
-    let index = (x_offset / TOTAL_CANDLE).floor() as usize;
+    let x_offset = pointer_pos.x - rect.left() - chart.pan_offset;
+    let index = (x_offset / total_candle).floor() as usize;
 
     if index < price_bars.len() {
         chart.hover_index = Some(index);
+
+        let (min_price, max_price) = get_price_bounds(price_bars);
+        let price_span = (max_price - min_price).max(1.0);
+
+        let t = (rect.bottom() - pointer_pos.y) / rect.height();
+        let price = min_price + t * price_span;
+
+        chart.hover_price = Some(price);
     } else {
         chart.hover_index = None;
+        chart.hover_price = None;
     }
-}
-
-fn draw_hover_indicator(
-    painter: &Painter,
-    rect: Rect,
-    price: f32,
-    price_bars: &[PriceBar],
-    hover_index: Option<usize>,
-) {
-    if price_bars.is_empty() || hover_index.is_none() {
-        return ();
-    }
-
-    const CANDLE_WIDTH: f32 = 6.0;
-    const GAP: f32 = 1.0;
-    const TOTAL_CANDLE: f32 = CANDLE_WIDTH + GAP;
-
-    let x = rect.left() + (hover_index.unwrap() as f32) * TOTAL_CANDLE;
-    let x_center = x + CANDLE_WIDTH * 0.5;
-
-    let (min_price, max_price) = get_price_bounds(price_bars);
-    let price_span = (max_price - min_price).max(1.0);
-    let y = get_price_position_y(price, min_price, price_span, rect);
-
-    let x_seg = [Pos2::new(x_center, rect.top()), Pos2::new(x_center, rect.bottom())];
-    let y_seg = [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)];
-
-    let stroke = Stroke {
-        width: 1.0,
-        color: Color32::from_rgba_unmultiplied(100, 100, 100, 200),
-    };
-
-    painter.add(Shape::dashed_line(
-        &x_seg,
-        stroke,
-        4.0,
-        4.0,
-    ));
-
-    painter.add(Shape::dashed_line(
-        &y_seg,
-        stroke,
-        4.0,
-        4.0,
-    ));
-
-    painter.text(
-        Pos2::new(rect.right() - 60.0, y - 10.0),
-        Align2::RIGHT_CENTER,
-        format!("{:.2}", price),
-        TextStyle::Small.resolve(&painter.ctx().style()),
-        Color32::from_rgb(100, 100, 100),
-    );
-}
-
-fn draw_current_price(
-    painter: &Painter,
-    rect: Rect,
-    current_price: f32,
-    price_bars: &[PriceBar],
-) {
-    if price_bars.is_empty() {
-        return;
-    }
-
-    let (min_price, max_price) = get_price_bounds(price_bars);
-    let price_span = (max_price - min_price).max(1.0);
-    let y = get_price_position_y(current_price, min_price, price_span, rect);
-
-    let line_segment = [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)];
-    let stroke = Stroke {
-        width: 1.0,
-        color: get_price_color(current_price >= price_bars[0].close),
-    };
-
-    painter.add(Shape::dashed_line(
-        &line_segment,
-        stroke,
-        4.0,
-        4.0,
-    ));
-
-    painter.text(
-        Pos2::new(rect.right() - 60.0, y - 10.0),
-        Align2::RIGHT_CENTER,
-        format!("{:.2}", current_price),
-        TextStyle::Small.resolve(&painter.ctx().style()),
-        get_price_color(current_price >= price_bars[0].close),
-    );
 }
